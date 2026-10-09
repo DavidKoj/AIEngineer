@@ -14,36 +14,63 @@ class IpListDTO(BaseModel):
 
 @app.get("/")
 async def GetData():
+    """
+    Retrieves all stored data from the system by forwarding a request to Service B.
+    Returns the complete data dictionary.
+    """
     print(f"START: Get Data")
-    return await connector.MakeRequest(
-        BaseUrlB + "/getAll", 2, "ServiceB-GetAll"
-    )
+    try:
+        return await connector.MakeRequest(
+            BaseUrlB + "/getAll", 2, "ServiceB-GetAll"
+        )
+    except Exception as e:
+        print(f"[ERROR] ServiceA GetData failed: {str(e)}")
+        raise
+
 
 @app.get("/favicon.ico")
 def favicon():
+    """
+    Handles browser favicon requests to avoid unnecessary 404 errors in logs.
+    """
     print(f"START: favicon")
     return "ok"
 
 
+
 @app.get("/resolve-ip/{ip}")
 async def AddIp(ip: str):
+    """
+    Receives a single IP address, validates it, fetches geographical data from Service C,
+    and stores the result in Service B.
+    """
     print(f"START: Add IP {ip}")
-    ip = connector.ValidateIp(ip)
+    try:
+        ip = connector.ValidateIp(ip)
 
-    geo_data = await connector.MakeRequest(
-        f"{BaseUrlC}/fetch-geo/{ip}", 4, "ServiceC-FetchGeo"
-    )
-    
-    print(f"ServiceC responded with geo data")
+        geo_data = await connector.MakeRequest(
+            f"{BaseUrlC}/fetch-geo/{ip}", 11, "ServiceC-FetchGeo"
+        )
+        
+        print(f"ServiceC responded with geo data")
 
-    return await connector.MakeRequest(
-        BaseUrlB + "/AddIp", 8, "ServiceB-AddIp", meth='POST',
-        JsonData=geo_data
-    )
+        return await connector.MakeRequest(
+            BaseUrlB + "/AddIp", 8, "ServiceB-AddIp", meth='POST',
+            JsonData=geo_data
+        )
+    except Exception as e:
+        print(f"[ERROR] ServiceA AddIp failed for IP {ip}: {str(e)}")
+        raise
+
 
 
 @app.post("/resolve-ip-list")
 async def ResolveIpList(payload: IpListDTO):
+    """
+    Receives a list of IP addresses and processes them in a batch loop.
+    For each IP, validates, fetches geo info, saves to Service B, and returns
+    a detailed result array indicating success or error status per IP.
+    """
     print(f"START: Resolve IP List with {len(payload.ips)} IPs")
     
     results = []
@@ -53,7 +80,7 @@ async def ResolveIpList(payload: IpListDTO):
             validated_ip = connector.ValidateIp(ip_str)
             
             geo_data = await connector.MakeRequest(
-                f"{BaseUrlC}/fetch-geo/{validated_ip}", 4, "ServiceC-FetchGeo"
+                f"{BaseUrlC}/fetch-geo/{validated_ip}", 11, "ServiceC-FetchGeo"
             )
             
             save_response = await connector.MakeRequest(
@@ -65,14 +92,24 @@ async def ResolveIpList(payload: IpListDTO):
             
         except Exception as e:
             error_detail = getattr(e, 'detail', str(e))
+            print(f"[ERROR] ServiceA ResolveIpList failed for IP {ip_str}: {error_detail}")
             results.append({"ip": ip_str, "success": False, "error": error_detail})
 
     return {"processed_ips": results}
 
 
+
+
 @app.get("/delete/{iid}")
 async def delete(iid):
+    """
+    Deletes a record from the system by unique identifier (iid) via Service B.
+    """
     print(f"START: delete {iid}")
-    return await connector.MakeRequest(
-        BaseUrlB + f"/delete/{iid}", 2, "ServiceB-Delete", meth='DELETE'
-    )
+    try:
+        return await connector.MakeRequest(
+            BaseUrlB + f"/delete/{iid}", 2, "ServiceB-Delete", meth='DELETE'
+        )
+    except Exception as e:
+        print(f"[ERROR] ServiceA delete failed for ID {iid}: {str(e)}")
+        raise

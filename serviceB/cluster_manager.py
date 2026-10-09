@@ -1,9 +1,17 @@
 import math
 
 class GeoClusterManager:
+    """
+    Manages geographical distance calculations and cluster generation
+    using the Haversine formula and graph-based Connected Components algorithm.
+    """
+
+
+
     @staticmethod
     def _haversine(lat1, lon1, lat2, lon2):
-        R = 6371.0  # רדיוס כדור הארץ בק"מ
+        """Calculates the great-circle distance in kilometers between two geographic points."""
+        R = 6371.0  # Earth radius in km
         dlat = math.radians(lat2 - lat1)
         dlon = math.radians(lon2 - lon1)
         a = math.sin(dlat / 2)**2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon / 2)**2
@@ -11,18 +19,14 @@ class GeoClusterManager:
 
     @classmethod
     def calculate_dynamic_threshold(cls, valid_items):
-        """
-        חישוב סף דינמי (Threshold) בהתאם למרחקים בפועל בין הנקודות במערכת,
-        כדי להימנע מערך קשיח (Hardcoded) שמהווה חולשה.
-        """
+        """Computes a dynamic distance threshold based on actual point-to-point distances."""
         n = len(valid_items)
         if n <= 1:
             return 100.0 
         
         total_dist = 0
         pairs_count = 0
-        # דוגמה לחישוב דינמי: מציאת המרחק הממוצע בין כל הנקודות במערכת וגזירת הסף ממנו
-        for i in range(min(n, 20)):  # מדגם כדי לא לפגוע בביצועים אם יש אלפי פריטים
+        for i in range(min(n, 20)): 
             for j in range(i + 1, min(n, 20)):
                 _, _, lat1, lon1 = valid_items[i]
                 _, _, lat2, lon2 = valid_items[j]
@@ -33,11 +37,11 @@ class GeoClusterManager:
             return 500.0
             
         avg_dist = total_dist / pairs_count
-        # סף דינמי שמוגדר כחצי מהמרחק הממוצע הכולל, או מינימום הגיוני של 50 ק"מ
         return max(avg_dist * 0.5, 50.0)
 
     @classmethod
     def generate_clusters(cls, data_dict):
+        """Groups nearby geographic points into clusters and computes mean and median coordinates."""
         if not data_dict:
             return {}
 
@@ -51,7 +55,6 @@ class GeoClusterManager:
         if not valid_items:
             return {}
 
-        # קבלת סף דינמי במקום מספר קשיח
         threshold_km = cls.calculate_dynamic_threshold(valid_items)
 
         n = len(valid_items)
