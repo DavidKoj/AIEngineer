@@ -18,7 +18,7 @@ async def FetchGeoData(ip: str):
 
     while True:
         sleep_duration = 0
-        
+
         #Protected section for reading and updating shared rate limit states ---
         async with geo_lock:
             current_time = time.time()
@@ -47,22 +47,25 @@ async def FetchGeoData(ip: str):
             elif not free_api_rate_limited and "free-ip-api" not in failed_on_ip_providers:
                 chosen_provider = "free-ip-api"
             else:
-                #Calculate required sleep duration if both providers are busy
-                ip_api_wait = connector.ip_api_rate_limit_state["blocked_until"] - current_time if ip_api_blocked else 0
-                
-                oldest_free_t = (
-                    connector.free_ip_api_rate_limit_state["request_timestamps"][0] 
-                    if connector.free_ip_api_rate_limit_state["request_timestamps"] 
-                    else current_time
-                )
-                free_api_wait = max(0, (oldest_free_t + 10.0) - current_time) if free_api_rate_limited else 0
+              # Both unavailable: either one failed and the other is limited, or both are rate-limited
+              ip_api_wait = connector.ip_api_rate_limit_state["blocked_until"] - current_time if ip_api_blocked else 0
+              
+              oldest_free_t = (
+                  connector.free_ip_api_rate_limit_state["request_timestamps"][0] 
+                  if connector.free_ip_api_rate_limit_state["request_timestamps"] 
+                  else current_time
+              )
+              free_api_wait = max(0, (oldest_free_t + 10.0) - current_time) if free_api_rate_limited else 0
 
-                if "ip-api" in failed_on_ip_providers:
-                    sleep_duration = max(0, free_api_wait)
-                elif "free-ip-api" in failed_on_ip_providers:
-                    sleep_duration = max(0, ip_api_wait)
-                else:
-                    sleep_duration = max(0, min(ip_api_wait, free_api_wait))
+              if "ip-api" in failed_on_ip_providers:
+                  # ip-api failed, wait based on free provider
+                  sleep_duration = max(0, free_api_wait)
+              elif "free-ip-api" in failed_on_ip_providers:
+                  # free-ip-api failed, wait based on ip-api
+                  sleep_duration = max(0, ip_api_wait)
+              else:
+                  # Both rate-limited, wait for whichever frees up first
+                  sleep_duration = max(0, min(ip_api_wait, free_api_wait))
 
         #---Lock is released here, allowing other requests to access state during sleep ---
 
