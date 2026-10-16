@@ -1,14 +1,18 @@
 services:
-
   service-a-container:
     build:
       context: ./serviceA/
       dockerfile: Dockerfile
     container_name: svc-a-cont
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka-broker:9092
     networks:
       - my-network
     ports:
       - "8081:8080"
+    depends_on:
+      kafka-broker:
+        condition: service_healthy
 
   service-b-container:
     build:
@@ -29,6 +33,71 @@ services:
       - my-network
     ports:
       - "8083:8080"
+
+  kafka-broker:
+    image: apache/kafka:4.3.1
+    hostname: kafka-broker
+    networks:
+      - my-network
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: 'CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT'
+      KAFKA_ADVERTISED_LISTENERS: 'PLAINTEXT://kafka-broker:9092,PLAINTEXT_HOST://localhost:29092'
+      KAFKA_PROCESS_ROLES: 'broker,controller'
+      KAFKA_CONTROLLER_QUORUM_VOTERS: '1@kafka-broker:29093'
+      KAFKA_LISTENERS: 'PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:29093,PLAINTEXT_HOST://0.0.0.0:29092'
+      KAFKA_INTER_BROKER_LISTENER_NAME: 'PLAINTEXT'
+      KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER'
+      KAFKA_LOG_DIRS: '/var/lib/kafka/data'
+      CLUSTER_ID: 'Mk3OEYBSD3Tsfw5L5W0gWw'
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+
+  kafka-init:
+    image: apache/kafka:4.3.1
+    depends_on:
+      kafka-broker:
+        condition: service_healthy
+    networks:
+      - my-network
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >
+        /opt/kafka/bin/kafka-topics.sh
+        --bootstrap-server kafka-broker:9092
+        --create
+        --if-not-exists
+        --topic user-gateway
+        --partitions 1
+        --replication-factor 1
+    restart: "no"
+
+  kafka-consumer:
+    build: ./kafka-consumer
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+    networks:
+      - my-network
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka-broker:9092
+      KAFKA_TOPIC: user-gateway
+      KAFKA_GROUP_ID: user-gateway-group
+      SERVICE_B_URL: http://svc-b-cont:8080
+    restart: unless-stopped
+
+volumes:
+  kafka-data:
 
 networks:
   my-network:

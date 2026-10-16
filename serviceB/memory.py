@@ -3,14 +3,15 @@ import asyncio
 from cluster_manager import GeoClusterManager
 
 class IpMemory:
-
     """
-    Manages the in-memory state of system data and active IP addresses,
-    featuring an asynchronous lock mechanism to prevent race conditions.
+    Manages the in-memory state of system data (IPs and Users separately),
+    featuring asynchronous locks to prevent race conditions.
     """
 
-    data = {} 
+    data = {}        # Strictly for IP addresses and geographical data (used for clusters)
+    users_data = {}  # Strictly for user sign-in events coming from the Kafka consumer
     UsedIps = set()
+    
     memLock = asyncio.Lock()
 
     @classmethod
@@ -20,19 +21,20 @@ class IpMemory:
             value = await func(*args)
         return value
 
+    # --- IP & GEO DATA METHODS ---
     @classmethod
     async def getData(cls):
-        """Returns the full data dictionary."""
+        """Returns the full IP data dictionary."""
         return cls.data
 
     @classmethod
     async def lengthofData(cls):
-        """Returns the total number of items stored in the system."""
+        """Returns the total number of IP items stored in the system."""
         return len(cls.data)
     
     @classmethod
     async def doesKeyExist(cls, key):
-        """Checks whether a specific key exists in the data dictionary."""
+        """Checks whether a specific key exists in the IP data dictionary."""
         return key in cls.data
 
     @classmethod
@@ -42,7 +44,7 @@ class IpMemory:
 
     @classmethod
     async def addIpAndGeoData(cls, requestData):
-        """Adds a new record with an 8-character truncated UUID and registers the IP address."""
+        """Adds a new IP record with an 8-character truncated UUID and registers the IP address."""
         newId = str(uuid4())[:8]
         cls.data[newId] = requestData
         cls.UsedIps.add(requestData["ipAddress"])
@@ -50,7 +52,7 @@ class IpMemory:
     
     @classmethod
     async def deleteKeyValuePair(cls, key):
-        """Deletes a record by key and removes its IP address from the active set."""
+        """Deletes an IP record by key and removes its IP address from the active set."""
         record = cls.data.get(key)
         if record:
             ip = record.get("ipAddress")
@@ -60,5 +62,18 @@ class IpMemory:
 
     @classmethod
     async def generateClusters(cls):
-        """Executes the clustering algorithm on the current data dictionary."""
+        """Executes the clustering algorithm exclusively on the clean IP data dictionary."""
         return GeoClusterManager.generate_clusters(cls.data)
+
+    # --- USER EVENTS METHODS ---
+    @classmethod
+    async def addUserEvent(cls, eventData):
+        """Stores a user sign-in event in the isolated users storage with a unique ID."""
+        userId = str(uuid4())[:8]
+        cls.users_data[userId] = eventData
+        return userId
+
+    @classmethod
+    async def getUsersData(cls):
+        """Returns all stored user sign-in events."""
+        return cls.users_data

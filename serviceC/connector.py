@@ -7,7 +7,6 @@ ip_api_rate_limit_state = {
 }
 
 free_ip_api_rate_limit_state = {
-    "blocked_until": 0.0,
     "request_timestamps": []  
 }
 
